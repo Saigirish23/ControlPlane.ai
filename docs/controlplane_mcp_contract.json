@@ -1,0 +1,726 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ControlPlane.AI",
+    "description": "Consequence-aware runtime governance layer for enterprise AI. Matches the depth of oversight to the consequence of getting it wrong.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "description": "Health check endpoint.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/control": {
+      "post": {
+        "summary": "Control",
+        "description": "Evaluate an AI request through the ControlPlane.\n\nDetermines consequence tier, evaluation depth, runs appropriate\nchecks, and returns a structured decision.",
+        "operationId": "control_control_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/execution-rail": {
+      "post": {
+        "summary": "Execution Rail",
+        "description": "Evaluate an AI-generated tool call through the execution rail.\n\nIntercepts external actions and applies governance controls before\nallowing execution.",
+        "operationId": "execution_rail_execution_rail_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRailResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActionType": {
+        "type": "string",
+        "enum": [
+          "INFORMATIONAL",
+          "DECISION",
+          "EXTERNAL_ACTION"
+        ],
+        "title": "ActionType",
+        "description": "What the AI is doing."
+      },
+      "CheckResult": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": ""
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "CheckResult",
+        "description": "Result of a single check (PII, injection, policy, etc.)."
+      },
+      "CheckStatus": {
+        "type": "string",
+        "enum": [
+          "PASS",
+          "FAIL",
+          "UNCERTAIN"
+        ],
+        "title": "CheckStatus",
+        "description": "Result status for an individual check or evaluator."
+      },
+      "ConsequenceResult": {
+        "properties": {
+          "tier": {
+            "$ref": "#/components/schemas/ConsequenceTier"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "factors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Factors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tier",
+          "reason",
+          "factors"
+        ],
+        "title": "ConsequenceResult",
+        "description": "Output of the ConsequenceEngine."
+      },
+      "ConsequenceTier": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH"
+        ],
+        "title": "ConsequenceTier",
+        "description": "Real-world consequence level of an AI interaction."
+      },
+      "ControlRequest": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "title": "Request"
+          },
+          "user_context": {
+            "$ref": "#/components/schemas/UserContext"
+          },
+          "interaction_context": {
+            "$ref": "#/components/schemas/InteractionContext"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "title": "ControlRequest",
+        "description": "Inbound request to the ControlPlane."
+      },
+      "ControlResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "consequence": {
+            "$ref": "#/components/schemas/ConsequenceResult"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/EvaluationResult"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/PerformanceResult"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/CostResult"
+          },
+          "responsibility": {
+            "$ref": "#/components/schemas/ResponsibilityResult"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/DecisionResult"
+          },
+          "execution_rail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionRailResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "consequence",
+          "evaluation",
+          "decision"
+        ],
+        "title": "ControlResponse",
+        "description": "Complete ControlPlane response for a request."
+      },
+      "CostResult": {
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens",
+            "default": 0
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": ""
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms",
+            "default": 0.0
+          },
+          "model_calls": {
+            "type": "integer",
+            "title": "Model Calls",
+            "default": 0
+          },
+          "tool_calls": {
+            "type": "integer",
+            "title": "Tool Calls",
+            "default": 0
+          },
+          "retries": {
+            "type": "integer",
+            "title": "Retries",
+            "default": 0
+          },
+          "estimated_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Usd"
+          },
+          "is_anomalous": {
+            "type": "boolean",
+            "title": "Is Anomalous",
+            "default": false
+          },
+          "anomaly_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Anomaly Reasons"
+          }
+        },
+        "type": "object",
+        "title": "CostResult",
+        "description": "Cost and efficiency telemetry for a request."
+      },
+      "DataSensitivity": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH"
+        ],
+        "title": "DataSensitivity",
+        "description": "Sensitivity level of data involved."
+      },
+      "Decision": {
+        "type": "string",
+        "enum": [
+          "PASS",
+          "MODIFY",
+          "VERIFY",
+          "BLOCK",
+          "HUMAN_APPROVAL"
+        ],
+        "title": "Decision",
+        "description": "Final action taken by the ControlPlane."
+      },
+      "DecisionResult": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "requires_human": {
+            "type": "boolean",
+            "title": "Requires Human",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "DecisionResult",
+        "description": "Final ControlPlane decision."
+      },
+      "Domain": {
+        "type": "string",
+        "enum": [
+          "GENERAL",
+          "FINANCE",
+          "HEALTHCARE",
+          "LEGAL",
+          "SECURITY",
+          "INFRASTRUCTURE"
+        ],
+        "title": "Domain",
+        "description": "Business domain of the interaction."
+      },
+      "EvaluationDepth": {
+        "type": "string",
+        "enum": [
+          "FAST",
+          "DEEP",
+          "HIGH_ASSURANCE"
+        ],
+        "title": "EvaluationDepth",
+        "description": "Depth of evaluation applied based on consequence tier."
+      },
+      "EvaluationResult": {
+        "properties": {
+          "depth": {
+            "$ref": "#/components/schemas/EvaluationDepth"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckResult"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "overall_status": {
+            "$ref": "#/components/schemas/CheckStatus",
+            "default": "PASS"
+          }
+        },
+        "type": "object",
+        "required": [
+          "depth"
+        ],
+        "title": "EvaluationResult",
+        "description": "Aggregated evaluation output."
+      },
+      "ExecutionRailResult": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool",
+            "default": ""
+          },
+          "modified_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Parameters"
+          },
+          "consequence_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsequenceTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requires_human": {
+            "type": "boolean",
+            "title": "Requires Human",
+            "default": false
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "decision",
+          "reason"
+        ],
+        "title": "ExecutionRailResult",
+        "description": "Result from the execution rail for tool calls."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InteractionContext": {
+        "properties": {
+          "domain": {
+            "$ref": "#/components/schemas/Domain",
+            "default": "GENERAL"
+          },
+          "action_type": {
+            "$ref": "#/components/schemas/ActionType",
+            "default": "INFORMATIONAL"
+          },
+          "reversible": {
+            "type": "boolean",
+            "title": "Reversible",
+            "default": true
+          },
+          "data_sensitivity": {
+            "$ref": "#/components/schemas/DataSensitivity",
+            "default": "LOW"
+          }
+        },
+        "type": "object",
+        "title": "InteractionContext",
+        "description": "Contextual signals about the AI interaction."
+      },
+      "PerformanceResult": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus",
+            "default": "PASS"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "groundedness": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "relevance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consistency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PerformanceResult",
+        "description": "Performance evaluation (groundedness, relevance, consistency)."
+      },
+      "ResponsibilityResult": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus",
+            "default": "PASS"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckResult"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "title": "ResponsibilityResult",
+        "description": "Responsibility evaluation (PII, injection, safety)."
+      },
+      "ToolCallRequest": {
+        "properties": {
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "user_context": {
+            "$ref": "#/components/schemas/UserContext"
+          },
+          "interaction_context": {
+            "$ref": "#/components/schemas/InteractionContext"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tool"
+        ],
+        "title": "ToolCallRequest",
+        "description": "An AI-generated tool call intercepted by the execution rail."
+      },
+      "UserContext": {
+        "properties": {
+          "user_role": {
+            "type": "string",
+            "title": "User Role",
+            "default": "unknown"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "title": "UserContext",
+        "description": "Information about the requesting user/agent."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
