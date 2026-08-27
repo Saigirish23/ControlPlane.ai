@@ -1,4 +1,63 @@
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+*.env
+
+# SQLite Database & Data files
+*.sqlite
+*.sqlite3
+*.db
+support_agent_mcp/data/*.sqlite
+support_agent_mcp/data/*.db
+data/
+
+# Python cache & bytecode
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs, trace dumps, and test outputs
+*.log
+logs/
+audit_logs/
+.system_generated/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IDE and OS files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg

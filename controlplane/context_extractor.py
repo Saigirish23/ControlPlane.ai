@@ -59,6 +59,10 @@ class RequestContext:
     def is_decision(self) -> bool:
         return self.action_type == ActionType.DECISION
 
+    @property
+    def is_informational(self) -> bool:
+        return self.action_type == ActionType.INFORMATIONAL
+
 
 class ContextExtractor:
     """

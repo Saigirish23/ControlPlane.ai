@@ -114,6 +114,28 @@ class AuditLogger:
             )
         )
 
+    @property
+    def entries(self) -> List[AuditEntry]:
+        """Return all audit entries."""
+        return self._entries
+
+    def record_entry(self, entry: AuditEntry) -> AuditEntry:
+        """Record an explicit AuditEntry directly."""
+        self._entries.append(entry)
+        logger.info(
+            "AUDIT: request_id=%s tier=%s depth=%s decision=%s reason=%s",
+            entry.request_id,
+            entry.consequence_tier.value,
+            entry.evaluation_depth.value,
+            entry.final_decision.value,
+            entry.decision_reason,
+        )
+        self._emit(
+            AuditEvent(
+                event_type="control_decision",
+                data=entry.model_dump(),
+            )
+        )
         return entry
 
     def get_entries(self) -> List[AuditEntry]:

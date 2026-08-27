@@ -21,6 +21,7 @@ from controlplane.consequence_engine import ConsequenceEngine
 from controlplane.depth_planner import DepthPlanner
 from controlplane.models import (
     ActionType,
+    ConsequenceResult,
     ConsequenceTier,
     ControlRequest,
     DataSensitivity,
@@ -39,35 +40,108 @@ logger = logging.getLogger(__name__)
 _TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
     "transfer_money": {
         "domain": Domain.FINANCE,
+        "action_type": ActionType.EXTERNAL_ACTION,
         "reversible": False,
         "data_sensitivity": DataSensitivity.HIGH,
     },
     "send_email": {
         "domain": Domain.GENERAL,
+        "action_type": ActionType.EXTERNAL_ACTION,
         "reversible": False,
         "data_sensitivity": DataSensitivity.MEDIUM,
     },
     "update_patient_record": {
         "domain": Domain.HEALTHCARE,
+        "action_type": ActionType.EXTERNAL_ACTION,
         "reversible": True,
         "data_sensitivity": DataSensitivity.HIGH,
     },
     "delete_database": {
         "domain": Domain.INFRASTRUCTURE,
+        "action_type": ActionType.EXTERNAL_ACTION,
         "reversible": False,
         "data_sensitivity": DataSensitivity.HIGH,
     },
     "query_database": {
         "domain": Domain.GENERAL,
+        "action_type": ActionType.INFORMATIONAL,
         "reversible": True,
         "data_sensitivity": DataSensitivity.LOW,
     },
     "deploy_service": {
         "domain": Domain.INFRASTRUCTURE,
+        "action_type": ActionType.EXTERNAL_ACTION,
         "reversible": True,
         "data_sensitivity": DataSensitivity.MEDIUM,
     },
+    # ── Food Delivery Support Agent Tools ───────────────────────────
+    "get_order_details": {
+        "domain": Domain.GENERAL,
+        "action_type": ActionType.INFORMATIONAL,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.LOW,
+    },
+    "track_delivery_partner": {
+        "domain": Domain.GENERAL,
+        "action_type": ActionType.INFORMATIONAL,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.MEDIUM,
+    },
+    "get_order_history": {
+        "domain": Domain.GENERAL,
+        "action_type": ActionType.INFORMATIONAL,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.MEDIUM,
+    },
+    "check_refund_status": {
+        "domain": Domain.FINANCE,
+        "action_type": ActionType.INFORMATIONAL,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.LOW,
+    },
+    "list_order_complaints": {
+        "domain": Domain.GENERAL,
+        "action_type": ActionType.INFORMATIONAL,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.LOW,
+    },
+    "update_delivery_instructions": {
+        "domain": Domain.GENERAL,
+        "action_type": ActionType.EXTERNAL_ACTION,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.LOW,
+    },
+    "escalate_to_human_agent": {
+        "domain": Domain.GENERAL,
+        "action_type": ActionType.EXTERNAL_ACTION,
+        "reversible": True,
+        "data_sensitivity": DataSensitivity.MEDIUM,
+    },
+    "request_refund_or_replacement": {
+        "domain": Domain.FINANCE,
+        "action_type": ActionType.EXTERNAL_ACTION,
+        "reversible": False,
+        "data_sensitivity": DataSensitivity.HIGH,
+    },
 }
+
+
+def register_tool(
+    name: str,
+    domain: Domain = Domain.GENERAL,
+    action_type: ActionType = ActionType.EXTERNAL_ACTION,
+    reversible: bool = True,
+    data_sensitivity: DataSensitivity = DataSensitivity.LOW,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Register or override metadata for a tool in the execution rail."""
+    _TOOL_REGISTRY[name] = {
+        "domain": domain,
+        "action_type": action_type,
+        "reversible": reversible,
+        "data_sensitivity": data_sensitivity,
+        "metadata": metadata or {},
+    }
 
 
 class ExecutionRail:
@@ -102,10 +176,14 @@ class ExecutionRail:
             tool_call.interaction_context.data_sensitivity,
         )
 
+        action_type = tool_meta.get(
+            "action_type", tool_call.interaction_context.action_type
+        )
+
         # Build context
         interaction = InteractionContext(
             domain=domain,
-            action_type=ActionType.EXTERNAL_ACTION,
+            action_type=action_type,
             reversible=reversible,
             data_sensitivity=data_sensitivity,
         )
@@ -118,6 +196,20 @@ class ExecutionRail:
 
         ctx = self._context_extractor.extract(request)
         consequence = self._consequence_engine.evaluate(ctx)
+
+        # Domain policy adjustment for support refunds:
+        # If requested_amount is explicitly within auto-approve limit (e.g. <= 200.0),
+        # consequence tier is adjusted to LOW/MEDIUM allowing automated execution.
+        if tool_name == "request_refund_or_replacement":
+            requested_amount = tool_call.parameters.get("requested_amount")
+            refund_limit = tool_call.metadata.get("refund_limit", 200.0)
+            if requested_amount is not None and requested_amount <= refund_limit:
+                consequence = ConsequenceResult(
+                    tier=ConsequenceTier.LOW,
+                    reason=f"Refund amount ₹{requested_amount:.2f} is within auto-approval limit (₹{refund_limit:.2f})",
+                    factors=["finance", "within_policy_limit"],
+                )
+
         depth = self._depth_planner.plan(consequence.tier)
 
         # Decision logic for the execution rail
@@ -149,6 +241,12 @@ class ExecutionRail:
         tool_call: ToolCallRequest,
     ) -> tuple[Decision, str]:
         """Determine the execution rail decision."""
+        # Informational / read-only queries are safe to execute directly
+        if ctx.is_informational:
+            return (
+                Decision.PASS,
+                f"Read-only {ctx.domain.value.lower()} informational query approved for execution",
+            )
 
         # HIGH consequence: require human approval for irreversible actions
         if tier == ConsequenceTier.HIGH:
@@ -163,8 +261,14 @@ class ExecutionRail:
                 "High-consequence external action requires human approval",
             )
 
-        # MEDIUM consequence: allow with verification
+        # MEDIUM consequence:
         if tier == ConsequenceTier.MEDIUM:
+            # Reversible support actions (e.g. updating delivery instructions or standard escalation)
+            if ctx.reversible:
+                return (
+                    Decision.PASS,
+                    f"Reversible {ctx.domain.value.lower()} action approved for execution",
+                )
             return (
                 Decision.VERIFY,
                 "Medium-consequence action; verification recommended "

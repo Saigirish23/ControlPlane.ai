@@ -1,0 +1,17 @@
+# Food Delivery Customer Support Agent — MCP Testing Environment
+# Core dependencies
+
+# Google Gemini SDK
+google-genai>=2.20.0
+
+# MCP (Model Context Protocol) server framework
+mcp>=2.1.1
+
+# Data validation
+pydantic>=2.13.0
+
+# Rich terminal output (CLI test harness)
+rich>=13.7.0
+
+# Python-dotenv for loading .env files
+python-dotenv>=1.0.0

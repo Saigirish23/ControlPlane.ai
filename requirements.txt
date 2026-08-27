@@ -1,19 +1,35 @@
-# Core dependencies for ControlPlane.ai
-tiktoken>=0.7.0
-ipykernel>=6.29.0
+# QuickBite Customer Support Agent & ControlPlane.ai Runtime Governance
+# Core dependencies
 
-# Optional / Recommended extensions for LLM integrations & monitoring
-openai>=1.30.0
-google-genai>=0.1.0
-pydantic>=2.7.0
+# Google Gemini SDK
+google-genai>=2.20.0
+
+# Model Context Protocol (MCP) Framework
+mcp>=2.1.1
+
+# Data Validation & Domain Models
+pydantic>=2.9.0
+
+# Rich Terminal Interface
 rich>=13.7.0
+
+# Environment Configuration
 python-dotenv>=1.0.0
 
-# Backend API
+# LLM Utilities & Tokenization
+tiktoken>=0.7.0
+
+# Notebook / demo support
+ipykernel>=6.29.0
+
+# Optional LLM integrations
+openai>=1.30.0
+
+# Web Framework & HTTP Endpoints
 fastapi>=0.111.0
 uvicorn>=0.30.0
+httpx>=0.27.0
 
-# Testing
+# Testing Framework
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
-httpx>=0.27.0
