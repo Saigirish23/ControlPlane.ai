@@ -83,11 +83,20 @@ class ControlPlaneExecutionRailHook(BaseHook):
         refund_limit: float = REFUND_AUTO_APPROVE_LIMIT,
         user_role: str = "customer_support_agent",
         verbose: bool = True,
+        approval_manager: Optional[Any] = None,
     ):
         self.rail = rail or ExecutionRail()
         self.refund_limit = refund_limit
         self.user_role = user_role
         self.verbose = verbose
+        if approval_manager is not None:
+            self.approval_manager = approval_manager
+        else:
+            try:
+                from support_agent_mcp.approval import ApprovalManager
+                self.approval_manager = ApprovalManager()
+            except Exception:
+                self.approval_manager = None
 
     def pre_call_hook(self, tool_name: str, args: Dict[str, Any]) -> HookResult:
         req_id = f"req-cp-{uuid.uuid4().hex[:8]}"
@@ -137,6 +146,22 @@ class ControlPlaneExecutionRailHook(BaseHook):
         # ── 1. HUMAN APPROVAL REQUIRED (e.g. Large refund) ───────────────────
         if rail_result.decision == Decision.HUMAN_APPROVAL:
             requested = args.get("requested_amount")
+            # Persist to approval store if manager is available
+            approval_id = req_id
+            if self.approval_manager is not None:
+                try:
+                    persisted = self.approval_manager.persist_pending(
+                        tool_name=tool_name,
+                        tool_args=dict(args),
+                        consequence_tier=tier_str,
+                        decision=decision_str,
+                        reason=rail_result.reason,
+                        user_context={"user_role": self.user_role, "customer_id": user_id},
+                    )
+                    approval_id = persisted.get("request_id", req_id)
+                except Exception as e:
+                    console.print(f"[bold yellow]Warning: Failed to persist approval request:[/bold yellow] {e}")
+
             msg = (
                 f"Your refund request of ₹{requested:.2f} exceeds our automated approval limit (₹{self.refund_limit:.2f}). "
                 f"ControlPlane governance has routed this to our senior support team for manual review within 24 hours. "
@@ -151,7 +176,8 @@ class ControlPlaneExecutionRailHook(BaseHook):
                     "consequence_tier": tier_str,
                     "decision": decision_str,
                     "requires_human": True,
-                    "request_id": req_id,
+                    "request_id": approval_id,
+                    "approval_request_id": approval_id,
                 },
                 block_response={
                     "success": True,
@@ -161,6 +187,8 @@ class ControlPlaneExecutionRailHook(BaseHook):
                     "approved_amount": None,
                     "decision": "HUMAN_APPROVAL",
                     "consequence_tier": tier_str,
+                    "request_id": approval_id,
+                    "approval_request_id": approval_id,
                     "message": msg,
                 },
             )
@@ -527,6 +555,7 @@ def build_default_pipeline(
     redact_pii: bool = False,
     allowed_tools: Optional[Set[str]] = None,
     blocked_tools: Optional[Set[str]] = None,
+    approval_manager: Optional[Any] = None,
 ) -> ProxyPipeline:
     """
     Build the ControlPlane-integrated proxy pipeline.
@@ -536,7 +565,11 @@ def build_default_pipeline(
     """
     hooks: List[BaseHook] = [
         ToolAuthorizationHook(allowed_tools=allowed_tools, blocked_tools=blocked_tools),
-        ControlPlaneExecutionRailHook(refund_limit=refund_limit, verbose=verbose_logging),
+        ControlPlaneExecutionRailHook(
+            refund_limit=refund_limit,
+            verbose=verbose_logging,
+            approval_manager=approval_manager,
+        ),
         SentimentScorerHook(threshold=sentiment_threshold),
         ControlPlaneAuditLoggerHook(verbose=verbose_logging),
         LatencyTrackerHook(),

@@ -129,6 +129,24 @@ CREATE TABLE IF NOT EXISTS escalation_tickets (
     created_at         TEXT NOT NULL,
     notes              TEXT
 );
+
+CREATE TABLE IF NOT EXISTS approval_requests (
+    request_id          TEXT PRIMARY KEY,
+    tool_name           TEXT NOT NULL,
+    tool_args_json      TEXT NOT NULL,
+    args_hash           TEXT NOT NULL,
+    consequence_tier    TEXT NOT NULL,
+    decision            TEXT NOT NULL,
+    reason              TEXT NOT NULL,
+    user_context_json   TEXT NOT NULL DEFAULT '{}',
+    status              TEXT NOT NULL DEFAULT 'PENDING',
+    created_at          TEXT NOT NULL,
+    resolved_at         TEXT,
+    resolved_by         TEXT,
+    execution_result    TEXT,
+    revalidation_result TEXT,
+    notes               TEXT
+);
 """
 
 

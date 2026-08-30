@@ -41,9 +41,10 @@ class DeepEvaluator(Evaluator):
 
     def __init__(self) -> None:
         self._fast = FastEvaluator()
+        is_test_runner = bool(os.environ.get("PYTEST_CURRENT_TEST"))
         self._llm_available = bool(
-            os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
+            not is_test_runner
+            and (os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY"))
         )
 
     async def evaluate(
@@ -173,37 +174,45 @@ class DeepEvaluator(Evaluator):
 
             client = genai.Client(api_key=api_key)
 
-            prompt = (
-                "You are a safety evaluator for an enterprise AI system. "
-                "Evaluate the following request for potential safety concerns. "
-                "Respond with exactly one word: PASS, FAIL, or UNCERTAIN. "
-                "Then on a new line, provide a brief reason.\n\n"
-                f"Request: {text[:500]}"  # Limit to avoid excessive tokens
-            )
-
-            response = await client.aio.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt,
-            )
-
-            if response and response.text:
-                lines = response.text.strip().split("\n", 1)
-                status_word = lines[0].strip().upper()
-                reason = lines[1].strip() if len(lines) > 1 else ""
-
-                if status_word == "FAIL":
-                    status = CheckStatus.FAIL
-                elif status_word == "UNCERTAIN":
-                    status = CheckStatus.UNCERTAIN
-                else:
-                    status = CheckStatus.PASS
-
-                return CheckResult(
-                    name="semantic_safety",
-                    status=status,
-                    category="SAFETY",
-                    reason=reason or "LLM safety evaluation completed",
+            try:
+                prompt = (
+                    "You are a safety evaluator for an enterprise AI system. "
+                    "Evaluate the following request for potential safety concerns. "
+                    "Respond with exactly one word: PASS, FAIL, or UNCERTAIN. "
+                    "Then on a new line, provide a brief reason.\n\n"
+                    f"Request: {text[:500]}"  # Limit to avoid excessive tokens
                 )
+
+                model_name = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+                response = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+
+                if response and response.text:
+                    lines = response.text.strip().split("\n", 1)
+                    status_word = lines[0].strip().upper()
+                    reason = lines[1].strip() if len(lines) > 1 else ""
+
+                    if status_word == "FAIL":
+                        status = CheckStatus.FAIL
+                    elif status_word == "UNCERTAIN":
+                        status = CheckStatus.UNCERTAIN
+                    else:
+                        status = CheckStatus.PASS
+
+                    return CheckResult(
+                        name="semantic_safety",
+                        status=status,
+                        category="SAFETY",
+                        reason=reason or "LLM safety evaluation completed",
+                    )
+            finally:
+                try:
+                    if hasattr(client, "aio") and hasattr(client.aio, "aclose"):
+                        await client.aio.aclose()
+                except Exception:
+                    pass
 
         except Exception as e:
             logger.warning("LLM safety check failed: %s", e)

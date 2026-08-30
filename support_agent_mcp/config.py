@@ -24,7 +24,7 @@ DB_PATH = PROJECT_ROOT / "data" / "support_db.sqlite"
 
 # ── Gemini API ───────────────────────────────────────────────────────────────
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 # ── MCP Server ───────────────────────────────────────────────────────────────
 MCP_SERVER_HOST: str = os.getenv("MCP_HOST", "127.0.0.1")

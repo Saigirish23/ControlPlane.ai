@@ -324,11 +324,23 @@ class SupportAgent:
         while rounds < MAX_TOOL_ROUNDS:
             rounds += 1
 
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=self._history,
-                config=self._build_config(),
-            )
+            # Generate content with retry on rate limits
+            max_retries = 3
+            response = None
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model,
+                        contents=self._history,
+                        config=self._build_config(),
+                    )
+                    break
+                except Exception as e:
+                    if ("429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)) and attempt < max_retries - 1:
+                        import time
+                        time.sleep(6 * (attempt + 1))
+                        continue
+                    raise
 
             candidate = response.candidates[0]
             content   = candidate.content
@@ -355,17 +367,15 @@ class SupportAgent:
                 tool_result = self._execute_tool(fc.name, args)
 
                 result_parts.append(
-                    gtypes.Part(
-                        function_response=gtypes.FunctionResponse(
-                            name=fc.name,
-                            response={"result": tool_result},
-                        )
+                    gtypes.Part.from_function_response(
+                        name=fc.name,
+                        response={"result": tool_result},
                     )
                 )
 
-            # Append tool results as a "tool" role turn
+            # Append tool results as a user turn per Gemini API specification
             self._history.append(
-                gtypes.Content(role="tool", parts=result_parts)
+                gtypes.Content(role="user", parts=result_parts)
             )
 
         # Fallback if we hit max rounds
