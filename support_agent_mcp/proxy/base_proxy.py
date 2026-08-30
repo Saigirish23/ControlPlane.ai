@@ -80,6 +80,7 @@ class BaseHook(ABC):
         self,
         tool_name: str,
         args: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
     ) -> HookResult:
         """
         Called BEFORE the MCP tool executes.
@@ -96,6 +97,7 @@ class BaseHook(ABC):
         tool_name: str,
         args: Dict[str, Any],
         result: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
     ) -> HookResult:
         """
         Called AFTER the MCP tool executes.
@@ -148,12 +150,20 @@ class ProxyPipeline:
         post_records: List[Dict[str, Any]] = []
         final_action = HookAction.ALLOW
         current_args = dict(args)
+        pipeline_context: Dict[str, Any] = {}
 
         t0 = time.perf_counter()
 
         # ── Pre-call hooks ────────────────────────────────────────────────────
         for hook in self.hooks:
-            hr = hook.pre_call_hook(tool_name, current_args)
+            try:
+                hr = hook.pre_call_hook(tool_name, current_args, context=pipeline_context)
+            except TypeError:
+                hr = hook.pre_call_hook(tool_name, current_args)
+
+            if hr.metadata:
+                pipeline_context.update(hr.metadata)
+
             pre_records.append({
                 "hook": hook.name,
                 "action": hr.action.value,
@@ -176,6 +186,14 @@ class ProxyPipeline:
                     "blocked": True,
                     "reason": hr.reason or "Request blocked by proxy policy.",
                 }
+                # Run post-call hooks so audit loggers record the blocked event
+                for post_hook in self.hooks:
+                    try:
+                        post_hook.post_call_hook(tool_name, current_args, block_resp, context=pipeline_context)
+                    except TypeError:
+                        post_hook.post_call_hook(tool_name, current_args, block_resp)
+                    except Exception:
+                        pass
                 return block_resp
 
         # ── Execute tool ──────────────────────────────────────────────────────
@@ -189,13 +207,25 @@ class ProxyPipeline:
                 pre_hook_results=pre_records, post_hook_results=[],
                 latency_ms=latency, final_action=HookAction.ALLOW, blocked=False,
             ))
+            for post_hook in self.hooks:
+                try:
+                    post_hook.post_call_hook(tool_name, current_args, error_result, context=pipeline_context)
+                except Exception:
+                    pass
             return error_result
 
         current_result = result
 
         # ── Post-call hooks ───────────────────────────────────────────────────
         for hook in self.hooks:
-            hr = hook.post_call_hook(tool_name, current_args, current_result)
+            try:
+                hr = hook.post_call_hook(tool_name, current_args, current_result, context=pipeline_context)
+            except TypeError:
+                hr = hook.post_call_hook(tool_name, current_args, current_result)
+
+            if hr.metadata:
+                pipeline_context.update(hr.metadata)
+
             post_records.append({
                 "hook": hook.name,
                 "action": hr.action.value,

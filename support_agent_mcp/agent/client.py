@@ -247,17 +247,8 @@ class SupportAgent:
             customer_id=customer_id,
         )
 
-        # Conversation history — list of gtypes.Content
+        # Conversation history — list of gtypes.Content (starts clean for active session)
         self._history: List[gtypes.Content] = []
-
-        # Seed with few-shot examples (optional — helps steer the model early)
-        for ex in FEW_SHOT_EXAMPLES:
-            self._history.append(
-                gtypes.Content(
-                    role=ex["role"],
-                    parts=[gtypes.Part(text=ex["content"])],
-                )
-            )
 
         # Track tool calls made in the current session
         self.tool_call_log: List[Dict[str, Any]] = []

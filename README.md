@@ -136,7 +136,7 @@ ControlPlane.ai/
 │   └── controlplane_mcp_contract.json            # OpenAPI 3.1.0 specification
 ├── scripts/
 │   └── benchmark.py               # Deterministic latency benchmark script
-├── tests/                         # 139 unit, integration, lifecycle, and fault-injection tests
+├── tests/                         # 158 unit, integration, lifecycle, and fault-injection tests
 ├── requirements.txt               # Dependencies
 └── pytest.ini                     # Pytest configuration
 ```
@@ -178,7 +178,7 @@ python3 demo_member2_flows.py
 ```bash
 python3 -m pytest tests/ support_agent_mcp/tests/ -v
 ```
-*(Latest verified suite: 139 unit, integration, lifecycle, and fault-injection tests passing).*
+*(Latest verified suite: 158 unit, integration, lifecycle, and fault-injection tests passing).*
 
 ### 5. Run Member 1 Readiness Checks
 ```bash

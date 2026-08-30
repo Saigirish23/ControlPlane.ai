@@ -12,8 +12,8 @@ requiring changes to downstream components.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
 from controlplane.models import (
     ActionType,
@@ -39,6 +39,9 @@ class RequestContext:
     reversible: bool
     data_sensitivity: DataSensitivity
     session_id: Optional[str] = None
+    tool_name: Optional[str] = None
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_sensitive_domain(self) -> bool:
@@ -78,6 +81,9 @@ class ContextExtractor:
         ic: InteractionContext = request.interaction_context
         uc: UserContext = request.user_context
 
+        tool_name = request.metadata.get("tool_name")
+        parameters = request.metadata.get("parameters", {})
+
         ctx = RequestContext(
             request_text=request.request,
             user_role=uc.user_role,
@@ -87,6 +93,9 @@ class ContextExtractor:
             reversible=ic.reversible,
             data_sensitivity=ic.data_sensitivity,
             session_id=uc.session_id,
+            tool_name=tool_name,
+            parameters=parameters,
+            metadata=request.metadata,
         )
 
         logger.debug(

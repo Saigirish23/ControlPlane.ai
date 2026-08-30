@@ -143,6 +143,15 @@ class ControlPlaneExecutionRailHook(BaseHook):
             )
             console.print(f"  [dim]Reason:[/dim] {rail_result.reason}")
 
+        # Determine depth from consequence tier
+        if rail_result.consequence_tier == ConsequenceTier.HIGH:
+            depth_enum = EvaluationDepth.HIGH_ASSURANCE
+        elif rail_result.consequence_tier == ConsequenceTier.MEDIUM:
+            depth_enum = EvaluationDepth.DEEP
+        else:
+            depth_enum = EvaluationDepth.FAST
+        depth_str = depth_enum.value
+
         # ── 1. HUMAN APPROVAL REQUIRED (e.g. Large refund) ───────────────────
         if rail_result.decision == Decision.HUMAN_APPROVAL:
             requested = args.get("requested_amount")
@@ -174,10 +183,13 @@ class ControlPlaneExecutionRailHook(BaseHook):
                 reason=rail_result.reason,
                 metadata={
                     "consequence_tier": tier_str,
+                    "evaluation_depth": depth_str,
                     "decision": decision_str,
+                    "reason": rail_result.reason,
                     "requires_human": True,
                     "request_id": approval_id,
                     "approval_request_id": approval_id,
+                    "rail_result": rail_result,
                 },
                 block_response={
                     "success": True,
@@ -200,8 +212,11 @@ class ControlPlaneExecutionRailHook(BaseHook):
                 reason=rail_result.reason,
                 metadata={
                     "consequence_tier": tier_str,
+                    "evaluation_depth": depth_str,
                     "decision": decision_str,
+                    "reason": rail_result.reason,
                     "request_id": req_id,
+                    "rail_result": rail_result,
                 },
                 block_response={
                     "success": False,
@@ -221,8 +236,11 @@ class ControlPlaneExecutionRailHook(BaseHook):
                 reason=rail_result.reason,
                 metadata={
                     "consequence_tier": tier_str,
+                    "evaluation_depth": depth_str,
                     "decision": decision_str,
+                    "reason": rail_result.reason,
                     "request_id": req_id,
+                    "rail_result": rail_result,
                 },
             )
 
@@ -231,8 +249,11 @@ class ControlPlaneExecutionRailHook(BaseHook):
             action=HookAction.ALLOW,
             metadata={
                 "consequence_tier": tier_str,
+                "evaluation_depth": depth_str,
                 "decision": decision_str,
+                "reason": rail_result.reason,
                 "request_id": req_id,
+                "rail_result": rail_result,
             },
         )
 
@@ -242,7 +263,8 @@ class ControlPlaneExecutionRailHook(BaseHook):
 class ControlPlaneAuditLoggerHook(BaseHook):
     """
     Logs every tool call and decision into ControlPlane's AuditLogger.
-    Maintains a structured, immutable governance trail.
+    Maintains a structured, immutable governance trail with full fidelity
+    to the pre-call ExecutionRailResult.
     """
     name = "ControlPlaneAuditLogger"
 
@@ -251,7 +273,12 @@ class ControlPlaneAuditLoggerHook(BaseHook):
         self.verbose = verbose
         self._call_count: Dict[str, int] = defaultdict(int)
 
-    def pre_call_hook(self, tool_name: str, args: Dict[str, Any]) -> HookResult:
+    def pre_call_hook(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> HookResult:
         self._call_count[tool_name] += 1
         if self.verbose:
             console.print(
@@ -262,22 +289,66 @@ class ControlPlaneAuditLoggerHook(BaseHook):
                 console.print(f"  [dim]{k}[/dim]: {v}")
         return HookResult(action=HookAction.ALLOW, metadata={"call_count": self._call_count[tool_name]})
 
-    def post_call_hook(self, tool_name: str, args: Dict[str, Any], result: Dict[str, Any]) -> HookResult:
-        success = result.get("success", True)
-        consequence_tier = result.get("consequence_tier", "LOW")
-        decision = result.get("decision", "PASS" if success else "BLOCK")
+    def post_call_hook(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> HookResult:
+        context = context or {}
+        success = result.get("success", True) and not result.get("blocked", False)
+
+        # 1. Authoritative Consequence Tier from pre-call governance context
+        raw_tier = context.get("consequence_tier")
+        if raw_tier and raw_tier in ConsequenceTier._value2member_map_:
+            consequence_tier = ConsequenceTier(raw_tier)
+        elif "rail_result" in context and hasattr(context["rail_result"], "consequence_tier") and context["rail_result"].consequence_tier:
+            consequence_tier = context["rail_result"].consequence_tier
+        else:
+            consequence_tier = ConsequenceTier.LOW
+
+        # 2. Authoritative Evaluation Depth from pre-call governance context
+        raw_depth = context.get("evaluation_depth")
+        if raw_depth and raw_depth in EvaluationDepth._value2member_map_:
+            evaluation_depth = EvaluationDepth(raw_depth)
+        else:
+            if consequence_tier == ConsequenceTier.HIGH:
+                evaluation_depth = EvaluationDepth.HIGH_ASSURANCE
+            elif consequence_tier == ConsequenceTier.MEDIUM:
+                evaluation_depth = EvaluationDepth.DEEP
+            else:
+                evaluation_depth = EvaluationDepth.FAST
+
+        # 3. Authoritative Decision from pre-call governance context
+        raw_decision = context.get("decision")
+        if raw_decision and raw_decision in Decision._value2member_map_:
+            decision = Decision(raw_decision)
+        elif "rail_result" in context and hasattr(context["rail_result"], "decision"):
+            decision = context["rail_result"].decision
+        else:
+            decision = Decision.PASS if success else Decision.BLOCK
+
+        # 4. Authoritative Reason and Request ID
+        decision_reason = (
+            context.get("reason")
+            or result.get("reason")
+            or ("Tool execution completed" if success else "Action blocked by policy")
+        )
+        request_id = context.get("request_id") or f"audit-{uuid.uuid4().hex[:8]}"
 
         # Record into ControlPlane AuditLogger
         entry = AuditEntry(
-            request_id=f"audit-{uuid.uuid4().hex[:8]}",
+            request_id=request_id,
             timestamp=str(time.time()),
-            consequence_tier=ConsequenceTier(consequence_tier) if consequence_tier in ConsequenceTier._value2member_map_ else ConsequenceTier.LOW,
+            consequence_tier=consequence_tier,
             consequence_factors=["tool_call", tool_name],
-            evaluation_depth=EvaluationDepth.FAST,
+            evaluation_depth=evaluation_depth,
             checks_executed=["execution_rail", "responsibility"],
-            check_results={"rail": "PASS" if success else "FAIL"},
-            final_decision=Decision(decision) if decision in Decision._value2member_map_ else Decision.PASS,
-            decision_reason=result.get("reason", "Tool execution completed"),
+            check_results={"rail": "PASS" if (decision in {Decision.PASS, Decision.VERIFY, Decision.MODIFY}) else "FAIL"},
+            final_decision=decision,
+            decision_reason=decision_reason,
+            execution_rail_decision=decision,
             metadata={"tool": tool_name, "args": args, "result": result},
         )
         self.audit_logger.record_entry(entry)

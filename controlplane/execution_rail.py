@@ -14,7 +14,7 @@ Flow:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from controlplane.context_extractor import ContextExtractor, RequestContext
 from controlplane.consequence_engine import ConsequenceEngine
@@ -188,32 +188,25 @@ class ExecutionRail:
             data_sensitivity=data_sensitivity,
         )
 
+        request_metadata = dict(tool_call.metadata)
+        request_metadata["tool_name"] = tool_name
+        request_metadata["parameters"] = tool_call.parameters
+
         request = ControlRequest(
             request=f"Tool call: {tool_name}({tool_call.parameters})",
             user_context=tool_call.user_context,
             interaction_context=interaction,
+            metadata=request_metadata,
         )
 
         ctx = self._context_extractor.extract(request)
         consequence = self._consequence_engine.evaluate(ctx)
-
-        # Domain policy adjustment for support refunds:
-        # If requested_amount is explicitly within auto-approve limit (e.g. <= 200.0),
-        # consequence tier is adjusted to LOW/MEDIUM allowing automated execution.
-        if tool_name == "request_refund_or_replacement":
-            requested_amount = tool_call.parameters.get("requested_amount")
-            refund_limit = tool_call.metadata.get("refund_limit", 200.0)
-            if requested_amount is not None and requested_amount <= refund_limit:
-                consequence = ConsequenceResult(
-                    tier=ConsequenceTier.LOW,
-                    reason=f"Refund amount ₹{requested_amount:.2f} is within auto-approval limit (₹{refund_limit:.2f})",
-                    factors=["finance", "within_policy_limit"],
-                )
-
         depth = self._depth_planner.plan(consequence.tier)
 
         # Decision logic for the execution rail
-        decision, reason = self._decide(ctx, consequence.tier, tool_call)
+        decision, reason = self._decide(
+            ctx, consequence.tier, tool_call, consequence.reason
+        )
 
         allowed = decision == Decision.PASS
 
@@ -239,6 +232,7 @@ class ExecutionRail:
         ctx: RequestContext,
         tier: ConsequenceTier,
         tool_call: ToolCallRequest,
+        consequence_reason: Optional[str] = None,
     ) -> tuple[Decision, str]:
         """Determine the execution rail decision."""
         # Informational / read-only queries are safe to execute directly
@@ -276,6 +270,8 @@ class ExecutionRail:
             )
 
         # LOW consequence: allow
+        if consequence_reason:
+            return (Decision.PASS, consequence_reason)
         return (
             Decision.PASS,
             "Low-consequence action approved for execution",

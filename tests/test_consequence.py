@@ -15,14 +15,25 @@ from controlplane.models import (
 )
 
 
+from typing import Optional
+
+
 def _make_ctx(
     domain: Domain = Domain.GENERAL,
     action_type: ActionType = ActionType.INFORMATIONAL,
     reversible: bool = True,
     data_sensitivity: DataSensitivity = DataSensitivity.LOW,
     user_role: str = "user",
+    tool_name: Optional[str] = None,
+    parameters: Optional[dict] = None,
+    metadata: Optional[dict] = None,
 ) -> RequestContext:
     """Helper to build RequestContext from parameters."""
+    meta = dict(metadata or {})
+    if tool_name:
+        meta["tool_name"] = tool_name
+    if parameters:
+        meta["parameters"] = parameters
     req = ControlRequest(
         request="test",
         user_context=UserContext(user_role=user_role),
@@ -32,6 +43,7 @@ def _make_ctx(
             reversible=reversible,
             data_sensitivity=data_sensitivity,
         ),
+        metadata=meta,
     )
     return ContextExtractor().extract(req)
 
@@ -163,3 +175,39 @@ class TestConsequenceEngine:
         result = self.engine.evaluate(ctx)
         assert isinstance(result.factors, list)
         assert len(result.factors) > 0
+
+    # ── Enterprise Policy Overrides (Refund Limits) ─────────────
+
+    def test_refund_within_policy_limit_returns_low(self):
+        """ConsequenceEngine directly evaluates a refund within limit (<= ₹200) as LOW tier."""
+        ctx = _make_ctx(
+            domain=Domain.FINANCE,
+            action_type=ActionType.EXTERNAL_ACTION,
+            reversible=False,
+            data_sensitivity=DataSensitivity.HIGH,
+            tool_name="request_refund_or_replacement",
+            parameters={"requested_amount": 179.0, "order_id": "ORD002"},
+            metadata={"refund_limit": 200.0},
+        )
+        result = self.engine.evaluate(ctx)
+        assert result.tier == ConsequenceTier.LOW
+        assert "within_policy_limit" in result.factors
+        assert "finance" in result.factors
+        assert "within auto-approval policy limit" in result.reason
+
+    def test_refund_above_policy_limit_remains_high(self):
+        """ConsequenceEngine directly evaluates a refund exceeding limit (> ₹200) as HIGH tier."""
+        ctx = _make_ctx(
+            domain=Domain.FINANCE,
+            action_type=ActionType.EXTERNAL_ACTION,
+            reversible=False,
+            data_sensitivity=DataSensitivity.HIGH,
+            tool_name="request_refund_or_replacement",
+            parameters={"requested_amount": 587.0, "order_id": "ORD004"},
+            metadata={"refund_limit": 200.0},
+        )
+        result = self.engine.evaluate(ctx)
+        assert result.tier == ConsequenceTier.HIGH
+        assert "finance" in result.factors
+        assert "irreversible" in result.factors
+        assert "within_policy_limit" not in result.factors

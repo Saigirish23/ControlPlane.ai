@@ -46,6 +46,20 @@ class ConsequenceRule:
     )
 
 
+def _is_refund_within_policy(ctx: RequestContext) -> bool:
+    """Check if request is a refund action within the auto-approval policy limit."""
+    if ctx.tool_name != "request_refund_or_replacement":
+        return False
+    requested_amount = ctx.parameters.get("requested_amount")
+    if requested_amount is None:
+        return False
+    refund_limit = ctx.metadata.get("refund_limit", 200.0)
+    try:
+        return float(requested_amount) <= float(refund_limit)
+    except (ValueError, TypeError):
+        return False
+
+
 def _default_factors(ctx: RequestContext) -> List[str]:
     """Build a list of contributing factors from context."""
     factors: List[str] = []
@@ -67,10 +81,21 @@ def _build_default_rules() -> List[ConsequenceRule]:
     - HIGH: irreversible external actions, especially in sensitive domains.
     - MEDIUM: decisions in sensitive domains, reversible external actions,
       sensitive informational requests.
-    - LOW: general informational, reversible, non-sensitive.
+    - LOW: general informational, reversible, non-sensitive, or actions within policy limits.
     """
     return sorted(
         [
+            # ── Enterprise Policy Rules (Highest Priority) ──────────
+            ConsequenceRule(
+                name="refund_within_policy_limit",
+                tier=ConsequenceTier.LOW,
+                priority=5,
+                match=_is_refund_within_policy,
+                reason_template=(
+                    "Refund amount is within auto-approval policy limit"
+                ),
+                factors_fn=lambda _ctx: ["finance", "within_policy_limit"],
+            ),
             # ── HIGH rules ──────────────────────────────────────────
             ConsequenceRule(
                 name="irreversible_external_action_sensitive",

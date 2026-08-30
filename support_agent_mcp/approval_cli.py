@@ -250,12 +250,12 @@ def main() -> None:
     # approve
     approve_parser = subparsers.add_parser("approve", help="Approve and execute a request")
     approve_parser.add_argument("request_id", help="The request ID to approve")
-    approve_parser.add_argument("--reviewer", default="human_reviewer", help="Reviewer identifier")
+    approve_parser.add_argument("--reviewer", "--approver", default="human_reviewer", help="Reviewer / approver identifier", dest="reviewer")
 
     # reject
     reject_parser = subparsers.add_parser("reject", help="Reject a request")
     reject_parser.add_argument("request_id", help="The request ID to reject")
-    reject_parser.add_argument("--reviewer", default="human_reviewer", help="Reviewer identifier")
+    reject_parser.add_argument("--reviewer", "--approver", default="human_reviewer", help="Reviewer / approver identifier", dest="reviewer")
     reject_parser.add_argument("--reason", default="Rejected by administrator", help="Rejection reason")
 
     # interactive
