@@ -24,7 +24,7 @@ from controlplane.models import (
     UserContext,
 )
 from controlplane.responsibility import ResponsibilityEvaluator
-from support_agent_mcp.db import init_db, seed_db
+from support_agent_mcp.db import db_session, init_db, seed_db
 from support_agent_mcp.proxy.base_proxy import ProxyPipeline, HookAction
 from support_agent_mcp.proxy.controlplane_hooks import (
     ControlPlaneExecutionRailHook,
@@ -40,10 +40,13 @@ from support_agent_mcp.server import (
 )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(autouse=True)
 def setup_database():
     init_db()
     seed_db()
+    with db_session() as conn:
+        conn.execute("DELETE FROM refund_requests")
+        conn.execute("DELETE FROM complaints")
 
 
 class TestControlPlaneExecutionRailHook:

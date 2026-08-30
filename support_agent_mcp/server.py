@@ -339,6 +339,27 @@ def request_refund_or_replacement(
             # Full order refund
             requested_amount = order_row["total_amount"]
 
+    # ── Idempotency / Replay Guard ───────────────────────────────────────────
+    duplicate_refund = RefundRepository.find_recent_duplicate(
+        order_id=order_id.strip().upper(),
+        requested_amount=requested_amount,
+        reason=reason,
+    )
+    if duplicate_refund is not None:
+        return {
+            "success": False,
+            "error": (
+                f"Duplicate refund request detected for order '{order_id.strip().upper()}'. "
+                f"An identical request of ₹{requested_amount:.2f} with reason '{reason}' "
+                f"was already submitted and is in '{duplicate_refund['status']}' status."
+            ),
+            "duplicate": True,
+            "existing_refund_id": duplicate_refund["refund_id"],
+            "existing_status": duplicate_refund["status"],
+            "order_id": order_id.strip().upper(),
+            "requested_amount": requested_amount,
+        }
+
     # Create complaint record
     complaint_id = f"COMP-{uuid.uuid4().hex[:8].upper()}"
     ComplaintRepository.create(

@@ -23,6 +23,7 @@ import pytest
 from controlplane.execution_rail import ExecutionRail
 from controlplane.models import ConsequenceTier, Decision, ToolCallRequest, UserContext
 from controlplane.responsibility import ResponsibilityEvaluator
+from support_agent_mcp import db as db_module
 from support_agent_mcp.approval import ApprovalManager, ApprovalStatus
 from support_agent_mcp.db import SCHEMA_SQL
 from support_agent_mcp.proxy.base_proxy import HookAction
@@ -39,10 +40,12 @@ from support_agent_mcp.server import (
 
 
 @pytest.fixture
-def isolated_db():
+def isolated_db(monkeypatch: pytest.MonkeyPatch):
     """Create an isolated test database with initialized schema and seed data."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)
+
+    monkeypatch.setattr(db_module, "DB_PATH", db_path)
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row

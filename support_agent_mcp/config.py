@@ -33,6 +33,8 @@ MCP_SERVER_PORT: int = int(os.getenv("MCP_PORT", "8765"))
 # ── Proxy / Guard settings ───────────────────────────────────────────────────
 # Maximum refund amount allowed without human approval
 REFUND_AUTO_APPROVE_LIMIT: float = float(os.getenv("REFUND_AUTO_APPROVE_LIMIT", "200.0"))
+# Time window in minutes to reject duplicate refund requests (idempotency guard)
+REFUND_IDEMPOTENCY_WINDOW_MINUTES: int = int(os.getenv("REFUND_IDEMPOTENCY_WINDOW_MINUTES", "10"))
 # Minimum sentiment score below which we force escalation (0.0 = very negative, 1.0 = positive)
 ESCALATION_SENTIMENT_THRESHOLD: float = float(os.getenv("ESCALATION_SENTIMENT_THRESHOLD", "0.35"))
 # Enable detailed proxy audit logging

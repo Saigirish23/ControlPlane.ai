@@ -448,6 +448,48 @@ class RefundRepository:
             ).fetchall()
 
     @staticmethod
+    def find_recent_duplicate(
+        order_id: str,
+        requested_amount: float,
+        reason: str,
+        window_minutes: Optional[int] = None,
+    ) -> Optional[sqlite3.Row]:
+        """
+        Find an existing refund request for the given order_id, amount, and reason
+        created within the idempotency window (in minutes).
+        """
+        from support_agent_mcp.config import REFUND_IDEMPOTENCY_WINDOW_MINUTES
+        if window_minutes is None:
+            window_minutes = REFUND_IDEMPOTENCY_WINDOW_MINUTES
+
+        with db_session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM refund_requests WHERE order_id = ? ORDER BY created_at DESC",
+                (order_id.strip().upper(),),
+            ).fetchall()
+
+            now = datetime.utcnow()
+            for row in rows:
+                row_amount = float(row["requested_amount"])
+                if abs(row_amount - float(requested_amount)) > 0.001:
+                    continue
+
+                if row["reason"].strip() != reason.strip():
+                    continue
+
+                if window_minutes > 0:
+                    try:
+                        created_at = datetime.fromisoformat(row["created_at"])
+                        if now - created_at <= timedelta(minutes=window_minutes):
+                            return row
+                    except Exception:
+                        return row
+                else:
+                    return row
+
+            return None
+
+    @staticmethod
     def update(refund_id: str, status: RefundStatus, approved_amount: Optional[float], notes: Optional[str]) -> None:
         with db_session() as conn:
             conn.execute(
