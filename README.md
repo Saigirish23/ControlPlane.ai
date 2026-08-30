@@ -87,16 +87,22 @@ Traditional AI guardrails apply uniform, static evaluation to every interaction.
 
 ## ⚡ Measured Telemetry & Latency
 
-Benchmarks measured over 500 iterations on standard Linux x86_64:
+Benchmarks are reproducible with:
 
-| Subsystem / Operation | Latency (p50) | Latency (p99) |
-|---|:---:|:---:|
-| **ConsequenceEngine.evaluate** | `0.003 ms` | `0.005 ms` |
-| **ExecutionRail.evaluate** | `0.009 ms` | `0.013 ms` |
-| **FastEvaluator.evaluate** | `0.013 ms` | `0.017 ms` |
-| **ResponsibilityEvaluator (PII + Injection)** | `0.073 ms` | `0.116 ms` |
-| **Total Core Governance Overhead** | **`< 0.100 ms`** | **`< 0.150 ms`** |
-| *LLM API Inference (Gemini 3.6 Flash)* | *`640.0 ms`* | *`1200.0 ms`* |
+```bash
+python scripts/benchmark.py --iterations 10000 --warmup 250
+```
+
+Latest verified local run:
+
+| Subsystem / Operation | Latency (p50) | Latency (p95) | Latency (p99) |
+|---|:---:|:---:|:---:|
+| **ConsequenceEngine.evaluate** | `0.0046 ms` | `0.0061 ms` | `0.0099 ms` |
+| **ExecutionRail.evaluate** | `0.0126 ms` | `0.0236 ms` | `0.0390 ms` |
+| **FastEvaluator.evaluate** | `0.0136 ms` | `0.0205 ms` | `0.0347 ms` |
+| **ResponsibilityEvaluator (PII + Injection)** | `0.0421 ms` | `0.0624 ms` | `0.0988 ms` |
+| **Core Governance Sample** | **`0.0280 ms`** | **`0.0444 ms`** | **`0.0777 ms`** |
+| *LLM API Inference (Gemini 3.6 Flash)* | *`640.0 ms`* | *`890.0 ms`* | *`1200.0 ms`* |
 
 > **Key Takeaway:** ControlPlane adds **< 0.1ms overhead**, proving runtime safety introduces zero perceptible user latency.
 
@@ -128,7 +134,9 @@ ControlPlane.ai/
 ├── docs/                          # Architecture guides, contracts, and handoff specs
 │   ├── TEAM_IMPLEMENTATION_STATUS_AND_WORKPLAN.md # Master team implementation plan
 │   └── controlplane_mcp_contract.json            # OpenAPI 3.1.0 specification
-├── tests/                         # 98 unit & integration tests (100% pass)
+├── scripts/
+│   └── benchmark.py               # Deterministic latency benchmark script
+├── tests/                         # 139 unit, integration, lifecycle, and fault-injection tests
 ├── requirements.txt               # Dependencies
 └── pytest.ini                     # Pytest configuration
 ```
@@ -170,7 +178,19 @@ python3 demo_member2_flows.py
 ```bash
 python3 -m pytest tests/ support_agent_mcp/tests/ -v
 ```
-*(Runs 128 unit, integration, and lifecycle tests with 100% pass rate).*
+*(Latest verified suite: 139 unit, integration, lifecycle, and fault-injection tests passing).*
+
+### 5. Run Member 1 Readiness Checks
+```bash
+python3 scripts/benchmark.py --iterations 10000 --warmup 250
+python3 -m pytest tests/ support_agent_mcp/tests/ -q
+```
+
+Member 1 readiness status:
+- Clean install from `requirements.txt` verified in a fresh virtual environment.
+- Gemini defaults normalized to `gemini-3.6-flash`.
+- Fault-injection coverage added for prompt injection, stream failures, denied tools, and DB non-mutation.
+- Secret scan found no committed `.env` file or key-format matches in the tracked repository.
 
 ---
 

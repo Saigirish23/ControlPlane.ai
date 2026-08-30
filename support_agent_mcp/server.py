@@ -1,11 +1,15 @@
 """
 server.py — FastMCP Food Delivery Customer Support Server.
 
-Exposes 4 tools that the Gemini support agent can call:
+Exposes 8 tools that the Gemini support agent can call:
   1. get_order_details(order_id)
   2. track_delivery_partner(order_id)
   3. request_refund_or_replacement(order_id, customer_id, reason, item_ids, requested_amount)
   4. escalate_to_human_agent(order_id, customer_id, reason, urgency)
+  5. get_order_history(customer_id)
+  6. check_refund_status(order_id)
+  7. update_delivery_instructions(order_id, new_instructions)
+  8. list_order_complaints(order_id)
 
 All tools query the SQLite DB via the repository layer in db.py.
 The server is designed to be wrapped by a forward proxy (proxy/base_proxy.py) — it

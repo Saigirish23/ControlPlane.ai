@@ -14,7 +14,7 @@ cp .env.example .env
 Ensure your `.env` contains your Google Gemini API key:
 ```ini
 GEMINI_API_KEY=your_actual_gemini_api_key
-GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-3.6-flash
 REFUND_AUTO_APPROVE_LIMIT=200.0
 ESCALATION_SENTIMENT_THRESHOLD=0.35
 PROXY_AUDIT_LOG=true

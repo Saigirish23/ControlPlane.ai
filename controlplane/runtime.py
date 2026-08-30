@@ -51,6 +51,7 @@ from controlplane.evaluators.high_assurance import HighAssuranceEvaluator
 from controlplane.execution_rail import ExecutionRail, MockExternalSystem
 from controlplane.models import (
     ActionType,
+    CheckResult,
     CheckStatus,
     ConsequenceResult,
     ConsequenceTier,
@@ -420,6 +421,10 @@ class UnifiedControlPlane:
             request_text=request.request,
             response_text=response_text if response_text else None,
         )
+        if stream_error:
+            performance.status = CheckStatus.UNCERTAIN
+            performance.reason = f"Stream failed mid-generation: {stream_error}"
+            performance.evidence.append(performance.reason)
 
         # Cost telemetry
         elapsed_ms = (time.time() - start_time) * 1000
@@ -452,8 +457,6 @@ class UnifiedControlPlane:
 
         # If stream guardrail flagged violations, reflect in responsibility
         if stream_result and stream_result.has_violations:
-            from controlplane.models import CheckResult
-
             for v in stream_result.violations:
                 responsibility.checks.append(
                     CheckResult(
@@ -606,4 +609,3 @@ class UnifiedControlPlane:
             "execution_result": tool_result.execution_result,
             "reason": tool_result.rail_result.reason,
         }
-

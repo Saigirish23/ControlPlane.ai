@@ -183,7 +183,7 @@ class DeepEvaluator(Evaluator):
                     f"Request: {text[:500]}"  # Limit to avoid excessive tokens
                 )
 
-                model_name = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+                model_name = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
                 response = await client.aio.models.generate_content(
                     model=model_name,
                     contents=prompt,
